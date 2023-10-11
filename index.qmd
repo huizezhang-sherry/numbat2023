@@ -1,0 +1,298 @@
+---
+title: "A Tidy Framework and Infrastructure to Systematically Assemble Spatio-temporal Indexes from Multivariate Data"
+date: 2023-10-12
+date-format: medium
+author: 
+ - name: "H. Sherry Zhang"
+institute: "Numbat seminar"
+# title-slide-attributes: 
+#   data-background-size: "35%"
+#   data-background-position: "75% 53%"
+format: 
+  revealjs:
+    slide-number: "c/t"
+    show-slide-number: all
+    controls: true
+execute:
+  echo: true
+self-contained: true
+css: style.css
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE,
+                      fig.align='center')
+library(tidyverse)
+library(tidyindex)
+library(lmomco)
+library(lubridate)
+library(SPEI)
+library(GGally)
+library(patchwork)
+library(tsibble)
+library(lubridate)
+```
+
+## Indexes
+
+::: r-stack
+![](figures/indexes.png){.fragment height="600"}
+
+![](figures/wrong-way-go-back.png){.fragment height="450"}
+:::
+
+::: notes
+Indexes are very commonly used to reduce multivariate information into a single number for problems such as monitoring climate, economy, health and social progress.
+
+Initially we are intend to study how different indexes combine multivariate information, after reading the literature on drought indexes, we find it interesting when looking at the pipeline of how these indexes are computed
+:::
+
+## Tokyo 2020 sport climbing `r emo::ji("climber")`
+
+::: {layout-ncol="3"}
+![Boulder: 4m wall, 3 problems in final](figures/climbing-boulder.jpeg){height="90%"}
+
+![Lead: 15m wall, 1 problem](figures/climbing-lead.jpeg){height="90%"}
+
+![Speed: 15m wall, always the same](figures/climbing-speed.jpeg){height="70%"}
+:::
+
+## Three disciplines, one champion
+
+In Tokyo 2020, this is how athletes are scored in the final:
+
+-   In each discipline, athletes are ranked in each discipline from 1 to 8 (top - bottom)
+-   The final score is the multiplication of the ranks in each discipline
+
+. . .
+
+How the rank is determined is also different in each discipline:
+
+-   boulder: number of tops and then number of zones
+-   lead: number of holds reached (1 - 40) before falling
+-   speed: fastest time to reach the top among three attempts
+
+## Who can win the gold medal? {.smaller}
+
+| Athletes            | Country  | Speed | Boulder | Lead | Total | Rank |
+|---------------------|----------|-------|---------|------|-------|------|
+| Janja Garnbret      | Slovenia | 5     | 1       | 1    | 5     | 1    |
+| Miho Nonaka         | Japan    | 3     | 3       | 5    | 45    | 2    |
+| Akiyo Noguchi       | Japan    | 4     | 4       | 4    | 64    | 3    |
+| Aleksandra Miroslaw | Poland   | 1     | 8       | 8    | 64    | 4    |
+| Jane Doe #1         | xxx      | 8     | 2       | 2    | 32    | 2?   |
+| Jane Doe #2         | xxx      | 1     | 7       | 4    | 28    | 2?   |
+| Jane Doe #3         | xxx      | 6     | 1       | 5    | 30    | 2?   |
+
+. . .
+
+Looks like:
+
+-   Being top in one discipline can get you pretty far (Aleksandra Miroslaw)
+-   (8, 2, 2) gets you higher than (1, 4, 7) (Jane Doe #1 vs. Jane Doe #2)
+-   (1, 4, 7) can get you higher than (1, 5, 6) (Jane Doe #2 vs. Jane Doe #3)
+
+## Ranking sport climbing athletes is an index construction problem ... {.center}
+
+. . .
+
+... where multivariate information is summarised into a single number `r emo::ji("gold")`
+
+## What's the problem with indexes? 
+
+::: r-stack
+![](figures/climate-indices-python.png){.fragment height="600"}
+
+![](figures/drought-index-lit-review.png){.fragment height="600"}
+
+![](figures/qs-university-ranking.png){.fragment height="600"}
+:::
+
+## Inspired from tidymodel
+
+::: r-stack
+
+![](figures/tidymodel.png){.fragment height=500 width=1000}
+
+![](figures/recipes.png){.fragment height=500 width=800}
+
+![](figures/workflow.png){.fragment height=500 width=1000}
+
+:::
+
+## A closer look at a class of drought indexes {background-image="figures/index-overview.png" background-size="65%" background-position="bottom"}
+
+::: notes
+The most commonly used drought index is called SPI,
+
+A huge collection of literature proposes drought indexes on top of SPI to improve the monitoring.
+
+All these indexes resemble each other but they all implemented differently by different research groups.
+
+It is similar to the situation that initially different machine learning methods are proposed by different research groups, and then tidymodel comes in to unite them all under the same workflow.
+
+It would be nice if the pipeline to construct indexes look like this
+:::
+
+## The pipeline design (9 modules) {.smaller}
+
+::: columns
+::: column
+*data with spatial (*$\mathbf{s}$) and temporal ($\mathbf{t}$) dimensions: $$x_j(s;t)$$
+
+-   **Temporal processing**: $f[x_{sj}(t)]$
+-   **Spatial processing**: $g[x_{tj}(s)]$
+
+<br>
+
+-   **Variable transformation**: $T[x_j(s;t)]$
+-   **Scaling**: $[x_j(s;t)- \alpha]/\gamma$
+
+
+:::
+
+::: column
+
+-   **Distribution fit**: $F[x_j(s;t)]$
+-   **Normalising**: $\Phi^{-1}[x_j(s;t)]$
+
+<br>
+
+-   **Dimension reduction**: $h[\mathbf{x}(s;t)]$
+-   **Benchmarking**: $u[x(s;t)]$
+-   **Simplification**
+
+```{=tex}
+\begin{equation}
+\begin{cases}
+C_0 & c_1 \leq x(\mathbf{s};\mathbf{t}) < c_0 \\
+C_1 & c_2 \leq x(\mathbf{s};\mathbf{t}) < c_1 \\
+\cdots \\
+C_z & c_z \leq x(\mathbf{s};\mathbf{t})
+\end{cases}
+\end{equation}
+```
+:::
+:::
+
+::: notes
+In this project, we identify 9 modules that are used to construct indexes from literature in different domains.
+
+We also develop software implementation for some of the modules. These are modules in the sense that there could be different ways to transform one variable into another, but they can also sit under the variable transformation module. In the next slide, I will mention an example of this.
+:::
+
+## Software design 
+
+```{r eval = FALSE, echo=TRUE}
+DATA |>
+  module1(...) |>
+  module2(...) |>
+  module3(...) |>
+  ...
+
+dimension_reduction(V1 = aggregate_linear(...))
+dimension_reduction(V2 = aggregate_geometrical(...))
+dimension_reduction(V3 = aggregate_manual(...))
+````
+
+The `aggregate_*()` function can be evaluated as a standalone recipe, before evaluated with the data in the dimension reduction module:
+
+```{r eval = TRUE, echo=TRUE}
+aggregate_manual(~x1 + x2)
+```
+
+## Confidence interval in the SPI {.smaller}
+
+A bootstrap sample of 100 is taken from the aggregated precipitation series to estimate gamma parameters and to calculate the index SPI for the *Texas Post Office* station in Queensland.
+
+::: columns
+
+::: column
+```{r}
+texas <- queensland |> dplyr::filter(name == "TEXAS POST OFFICE") |> head(1)
+queensland_map <- ozmaps::abs_ste |>  dplyr::filter(NAME == "Queensland") |> 
+  rmapshaper::ms_simplify(keep = 0.02)
+queensland_map |> 
+  ggplot() +
+  geom_sf(fill = "transparent", linewidth = 1) +
+  geom_point(data = queensland |> dplyr::distinct(long, lat, name), 
+             aes(x = long, y = lat), size = 3) +
+  geom_point(data = texas, aes(x = long, y = lat),
+             color = "orange", shape = 18, fill = "orange", size = 7) +  
+  theme_void()
+```
+:::
+
+::: column
+
+```{r eval = FALSE, echo = TRUE}
+DATA %>%
+  # aggregate monthly precipitation 
+  # with a 24-month window
+  aggregate(
+    .var = prcp, .scale = 24
+    ) %>%
+  # fit a gamma distribution to 
+  # obtain the probability value
+  # [0, 1]
+  dist_fit(
+    .dist = gamma(), .var = .agg, 
+    .n_boot = 100
+    ) %>%
+  # use the inverse CDF to 
+  # convert into z-score
+  augment(.var = .agg)
+```
+:::
+:::
+## Confidence interval in the SPI {.smaller}
+
+![80% and 95% confidence interval of the Standardized Precipitation Index (SPI-24) for the Texas post office station, in Queensland, Australia.  The dashed line at SPI = -2 represents an extreme drought as defined by the SPI. Most parts of the confidence intervals from 2019 to 2020 sit below the extreme drought line and are relatively wide compared to other time periods. This suggests that while it is certain that the Texas post office is suffering from a drastic drought, there is considerable uncertainty in quantifying its severity, given the extremity of the event.](figures/fig-conf-interval-1.png){width=1000 height=300}
+
+## Global Gender Gap Index
+
+::: {layout-ncol="2"}
+
+![](figures/gggi.png){height=600, width=400}
+
+![](figures/gggi-weight.png){height=120%}
+
+:::
+
+## Global Gender Gap Index
+
+::: columns
+::: {.column width=30%}
+![](figures/idx-tour.gif){width=100%}
+
+:::
+
+:::{.column width=60%}
+
+![](figures/idx-tour-static.png){height="40%"}
+:::
+:::
+
+## Summary {.smaller}
+
+A data pipeline comprising nine modules designed for the construction and analysis of indexes within the tidy framework. 
+
+Advantages? 
+
+  - quantify uncertainties, and
+  - assess indexes’ robustness, 
+  
+  and more!
+
+### Reference 
+
+Slides created via quarto available at
+
+<center><https://sherry-numbat2023.netlify.app/></center>
+
+<br>
+
+`r fontawesome::fa("link")` tidyindex package: <https://github.com/huizezhang-sherry/tidyindex> <br>
