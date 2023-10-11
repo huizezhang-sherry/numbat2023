@@ -1,11 +1,292 @@
 ---
-title: "numbat2023"
+title: "title"
+date: 2023-10-12
+date-format: medium
+author: 
+ - name: "H. Sherry Zhang"
+institute: "Numbat seminar 2023"
+# title-slide-attributes: 
+#   data-background-size: "35%"
+#   data-background-position: "75% 53%"
+format: 
+  revealjs:
+    slide-number: "c/t"
+    show-slide-number: all
+    controls: true
+execute:
+  echo: true
+self-contained: true
 ---
 
-## Quarto
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE,
+                      fig.align='center', 
+                      eval = FALSE)
+library(tidyverse)
+library(tidyindex)
+library(lmomco)
+library(lubridate)
+library(SPEI)
+library(GGally)
+library(patchwork)
+library(tsibble)
+library(lubridate)
+```
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+## Indexes {background-image="figures/indexes.png" background-size="55%" background-position="bottom 60px right 250px"}
+
+:::{.notes}
+Indexes are very commonly used to reduce multivariate information into a single number for problems such as monitoring climate, economy, health and social progress.
+
+
+Initially we are intend to study how different indexes combine multivariate information, after reading the literature on drought indexes, we find it interesting when looking at the pipeline of how these indexes are computed
+
+
+:::
+
+## A class of drought indexes {background-image="figures/index-overview.png" background-size="65%" background-position="bottom"}
+
+:::{.notes}
+The most commonly used drought index is called SPI, 
+
+A huge collection of literature proposes drought indexes on top of SPI to improve the monitoring.
+
+All these indexes resemble each other but they all implemented differently by different research groups.
+
+It is similar to the situation that initially different machine learning methods are proposed by different research groups, and then tidymodel comes in to unite them all under the same workflow.
+
+It would be nice if the pipeline to construct indexes look like this
+
+:::
+
+## Pipeline envisaged {background-image="figures/pipeline-envisaged.png" background-size="65%" background-position="bottom"}
+
+:::{.notes}
+The SPI is the root index
+
+SPEI has two more steps variable transformation and dimension reduction.
+
+SMRI takes two temporal aggregation steps, one of them is to calculate the snow melt from precipitation and temperature. 
+
+and lastly SSI follows exactly SPI but with streamflow data.
+
+With such a data pipeline, you can easily compare how indexes differ from one to another.
+
+:::
+
+## The pipeline design (9 modules) {.smaller}
+
+::: columns
+::: {.column}
+
+*data with spatial ($\mathbf{s}$) and temporal ($\mathbf{t}$) dimensions: $$x(\mathbf{s};\mathbf{t})$$*
+
+-   **Temporal processing**: $f_{\mathcal{\psi}}(x(\mathbf{s};\mathbf{t}))$
+-   **Spatial processing**: $g_{\mathcal{\theta}}(x(\mathbf{s};\mathbf{t}))$
+
+<br>
+
+-   **Variable transformation**: $h_{\tau}(x(\mathbf{s};\mathbf{t}))$
+-   **Scaling**: $[x(\mathbf{s};\mathbf{t})- \alpha]/\gamma$
+-   **Normalising**: $\Phi^{-1}[x(\mathbf{s}; \mathbf{t})]$
+
+:::
+
+::: {.column}
+
+-   **Distribution fit**: $F_{\eta}(x(\mathbf{s}; \mathbf{t}))$
+-   **Benchmarking**: $u[x(\mathbf{s};\mathbf{t})]$
+
+-   **Dimension reduction**
+
+```{=tex}
+\begin{equation}
+x_{p^*}(\mathbf{s}; \mathbf{t}) \rightarrow x_p(\mathbf{s}; \mathbf{t})
+\end{equation}
+```
+-   **Simplification**
+
+```{=tex}
+\begin{equation}
+\begin{cases}
+C_0 & c_1 \leq x(\mathbf{s};\mathbf{t}) < c_0 \\
+C_1 & c_2 \leq x(\mathbf{s};\mathbf{t}) < c_1 \\
+\cdots \\
+C_z & c_z \leq x(\mathbf{s};\mathbf{t})
+\end{cases}
+\end{equation}
+```
+:::
+:::
+
+:::{.notes}
+In this project, we identify 9 modules that are used to construct indexes from literature in different domains.
+
+We also develop software implementation for some of the modules. These are modules in the sense that there could be different ways to transform one variable into another, but they can also sit under the variable transformation module. In the next slide, I will mention an example of this.
+:::
+
+## Pipeline for two drought indexes
+
+::: panel-tabset
+### SPI
 
 ```{r}
-1 + 1
+#| eval: false
+#| echo: true
+idx_spi <- function(.scale, .dist, ...){
+  ...
+  data |>                            # data contain `prcp`
+    aggregate(.var = prcp,            # step 1: temporal aggregation
+              .scale = .scale)|>     #         aggregate `prcp` with time scale    
+                                      #         `.scale` to create `.agg`, by default
+    dist_fit(.dist = .dist,           # step 2: distribution fit
+             .method = "lmoms",       #         using L-moment to fit `.dist`
+             .var = .agg) |>         #         distribution on `.agg`
+    augment(.var = .agg)              # step 3: normalising 
+                                      #         find the normal density for `.agg`
+}
 ```
+
+### SPEI
+
+```{r}
+#| eval: false
+#| echo: true
+idx_spei <- function(.scale, .dist, ...){
+  ...
+  data |>                                  # data contain `tavg` and `prcp`
+    var_trans(                              # step 1: variable transformation
+      .method = "thornthwaite",             #         using the thornthwaite function
+      .vars = tavg, .new_name = "pet") |>  #         on `tavg` to create `pet`
+    dim_red(diff = prcp - pet) |>          # step 2: dimension reduction 
+    aggregate(                              # step 3: temporal aggregation
+      .var = diff,                          #         aggregate `diff` with time scale
+      .scale = .scale) |>                  #         `.scale` to create `.agg`
+    dist_fit(                               # step 4: distribution fit
+      .dist = .dist, .method = "lmoms",     #         using L-moment to fit `.dist`
+      .var = .agg) |>                      #         distribution on `.agg`
+    augment(.var = .agg)                    # step 5: normalising 
+                                            #         find the normal density for `.agg`
+}
+```
+:::
+
+:::{.notes}
+What we built with the tidyindex package are the pieces aggregate for temporal aggregation, dist_fit for fitting distribution, and augment for normalising. Users can compose their indexes from the module developed. Also we provide some wrapper for commonly used indexes, for example, the SPI and SPEI with some default parameters.
+:::
+
+## Example
+
+```{r echo = TRUE}
+.scale <- c(6, 12, 24, 36)
+(idx <- queensland |> 
+  init(id = id, time = ym) |> 
+  compute_indexes(
+    spei = idx_spei(
+      .pet_method = "thornthwaite", .tavg = tavg, .lat = lat,
+      .scale = .scale, .dist = c(gev(), loglogistic())),
+    spi = idx_spi(.scale = .scale)
+  ))
+```
+
+:::{.notes}
+A common task for drought index analyst is to compute a collection of drought indexes. Because drought can be characterised in different ways, analysts usually consider a range of their preferred indexes before making an announce on the situation. 
+
+
+:::
+
+## 2010 Queensland flood & 2019-20 Australia drought 
+
+```{r}
+library(sf)
+qld_lga <- absmapsdata::lga2018 |> 
+  filter(state_name_2016 == "Queensland") |> 
+  rmapshaper::ms_simplify(keep = 0.3) |> 
+  mutate(lga_name_2018 = str_replace(lga_name_2018, " \\([S|R|C|]\\)", ""),
+         lga_name_2018 = str_replace(lga_name_2018, " \\(Qld\\)", ""))
+```
+
+```{r drought-spatial}
+queensland_map <- ozmaps::abs_ste |> filter(NAME == "Queensland") |> 
+  rmapshaper::ms_simplify(keep = 0.02)
+queensland_map |> 
+  ggplot() +
+  geom_sf(fill = "transparent", color = "grey50", linewidth = 0.4) +
+  geom_point(
+    data = idx |> 
+      filter(.idx == "spi", .scale == 12) |> 
+      filter(((year(ym) %in% c(2010, 2019) & month(ym) >= 10) )|
+               ((year(ym) %in% c(2011, 2020) & month(ym) <= 3) )), 
+    aes(x = long, y = lat, color = .index)) +
+  colorspace::scale_color_continuous_divergingx(palette = "Geyser", rev = TRUE, name = "Index") + 
+  theme_void() +
+  facet_wrap(vars(ym), ncol = 6)
+```
+
+:::{.notes}
+
+:::
+
+## All time scales agree on an extreme drought in 2019-20 bushfire season
+
+```{r drought-temporal}
+texas <- idx |> 
+    filter(name == "TEXAS POST OFFICE", .idx == "spei") |> distinct(long, lat)
+p1 <- queensland_map |> 
+  ggplot() +
+  geom_sf(fill = "transparent") +
+  geom_point(data = queensland |> 
+               distinct(id, long, lat, name),
+             aes(x = long, y = lat)) +
+  geom_point(data = texas, aes(x = long, y = lat),
+             color = "orange", shape = 18, fill = "orange", size = 4) +  
+  theme_void()
+
+
+p2 <- idx |> 
+  filter(name == "TEXAS POST OFFICE", .idx == "spei") |> 
+  mutate(.dist = ifelse(.dist == "pargev", "GEV", "Log Logistic")) |> 
+  rename(scale = .scale) |> 
+  ggplot(aes(x = ym, y = .index, color = .dist, group = .dist)) +
+  geom_line() +
+  theme_benchmark() +
+  facet_wrap(vars(scale), labeller = label_both, ncol = 1) +
+  scale_x_yearmonth(breaks = "2 year", date_labels = "%Y") +
+  scale_color_brewer(palette = "Dark2", name = "Distribution") + 
+  xlab("Year") + 
+  ylab("Index")
+
+(p1 | p2)  + 
+  patchwork::plot_annotation(tag_levels = "a") + 
+  patchwork::plot_layout(guides = "collect")  &
+  theme(legend.position = "bottom") 
+```
+
+:::{.notes}
+
+:::
+
+## Summary
+
+-   In this example, we compared **two indexes** (SPI and SPEI) across **time** (monthly from 1990 Jan to 2022 Apr) and **space** (29 stations in Queensland, Australia) under **different index configurations** (different time scales: 6, 12, 24, 36; and distribution: GEV and log logistic).
+
+What you can expect an index pipeline to do :
+
+-   don't like the particular dimension reduction method used to combine variables? `r icons::fontawesome("arrow-right")` swap it with different expression(s)! 
+
+-   want to know the uncertainty associated with the SPI/ SPEI? `r icons::fontawesome("arrow-right")` bootstrap on the aggregated values before fitting the distribution!
+
+
+## Reference {.smaller}
+
+Slides created via quarto available at 
+
+<center> <https://sherry-numbat2023.netlify.app/> </center> 
+
+<br>
+
+`r fontawesome::fa("link")` tidyindex package: <https://github.com/huizezhang-sherry/tidyindex>
+<br>
