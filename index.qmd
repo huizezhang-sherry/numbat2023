@@ -4,7 +4,7 @@ date: 2023-10-12
 date-format: medium
 author: 
  - name: "H. Sherry Zhang"
-institute: "Numbat seminar"
+institute: "NUMBATs seminar"
 # title-slide-attributes: 
 #   data-background-size: "35%"
 #   data-background-position: "75% 53%"
@@ -64,7 +64,7 @@ Initially we are intend to study how different indexes combine multivariate info
 
 In Tokyo 2020, this is how athletes are scored in the final:
 
--   In each discipline, athletes are ranked in each discipline from 1 to 8 (top - bottom)
+-   In each discipline, athletes are ranked from 1 to 8 (top - bottom)
 -   The final score is the multiplication of the ranks in each discipline
 
 . . .
